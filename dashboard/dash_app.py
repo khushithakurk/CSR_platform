@@ -76,16 +76,18 @@ def tp(theme):
 USER_TYPES = [
     {"label": "Startup", "value": "startup"},
     {"label": "Corporate", "value": "corporate"},
-    {"label": "NGO (coming soon)", "value": "ngo", "disabled": True},
-    {"label": "Incubator (coming soon)", "value": "incubator", "disabled": True},
-    {"label": "Innovation Cell (coming soon)", "value": "innovation", "disabled": True},
-    {"label": "Others (coming soon)", "value": "others", "disabled": True},
+    {"label": "NGO", "value": "ngo"},
+    {"label": "Incubator", "value": "incubator"},
+    {"label": "Innovation Cell / Innovator", "value": "innovation"},
+    {"label": "Others", "value": "others"},
 ]
 
 INDUSTRY_OPTIONS = [
     "Healthcare", "EdTech", "FinTech", "AgriTech", "CleanTech", "BioTech",
     "AI/ML", "Manufacturing", "E-commerce/Retail", "Logistics",
-    "Media & Entertainment", "Other",
+    "Media & Entertainment", "Real Estate & Construction", "Automotive",
+    "Telecom", "Energy & Power", "Aerospace & Defence", "Textiles & Apparel",
+    "Food & Beverage", "Travel & Hospitality", "Other",
 ]
 
 STARTUP_STAGE_OPTIONS = [
@@ -107,6 +109,33 @@ FUNDING_TO_WHOM_OPTIONS = [
 
 # Uses the same sector labels already present in your CSV data (set below, after data loads)
 CSR_FUNDING_SECTOR_OPTIONS = []
+
+# CSR Focus Areas — used as a checklist (12 options + Other)
+CSR_FOCUS_AREA_OPTIONS = [
+    "Education", "Healthcare & Nutrition", "Environment & Sustainability",
+    "Rural Development", "Women Empowerment & Gender Equality",
+    "Skill Development & Livelihood", "Sports", "Heritage & Culture",
+    "Technology & Innovation", "Poverty Alleviation", "Disaster Relief",
+    "Water, Sanitation & Hygiene (WASH)", "Other",
+]
+
+CSR_DONATION_PRIORITY_OPTIONS = [
+    "NGOs", "R&D", "Incubators", "Infrastructure", "Others",
+]
+
+INCUBATOR_TYPE_OPTIONS = ["Government", "Private", "Academic", "NGO-backed"]
+
+NGO_TYPE_OPTIONS = [
+    "Trust", "Society", "Section 8 Company", "Foundation", "Other",
+]
+
+GEOGRAPHIC_REACH_OPTIONS = ["North", "West", "South", "East", "Central", "Pan India"]
+
+REQUIRED_DOCS_OPTIONS = [
+    "CSR Form", "80G Certificate", "12A Certificate", "MOM (Memorandum of Meeting)",
+    "AOA (Articles of Association)", "Incorporation Certificate", "FCRA Registration",
+    "PAN Registration No.",
+]
 
 
 # ── LOAD DATA ───────────────────────────────────────────────────────────────
@@ -429,23 +458,49 @@ def chart_card(title, graph, theme="dark", card_id=None):
 app.layout = html.Div([
 
     dcc.Store(id="theme-store", data="dark"),
+    dcc.Store(id="logged-in-user", data=None, storage_type="memory"),
 
-    # ── Top bar: title + theme toggle + Login/Sign Up/Chatbot buttons ──
+    # ── Top bar: title + theme toggle + auth area ──
     html.Div([
         html.Div([
             html.H3("CSR India — Live Dashboard", id="page-title", style={"margin": "0"}),
             html.P("FY 2023-24 CSR & Philanthropy Overview", id="page-subtitle", style={"margin": "0"}),
         ]),
         html.Div([
-            dbc.Button("🌙 Dark / ☀️ Light", id="theme-toggle-btn", color="secondary", outline=True, className="me-2"),
-            dbc.Button("Login", id="login-btn", color="light", outline=True, className="me-2"),
-            dbc.Button("Sign Up", id="signup-btn", color="light", outline=True, className="me-2"),
-            dbc.Button("Chatbot", id="open-chatbot-btn", color="success"),
+            dbc.Button("☀️  Light Mode", id="theme-toggle-btn", color="secondary", outline=True,
+                       className="me-2", style={"borderRadius": "999px", "fontWeight": "500"}),
+            html.Div([
+                html.Div([
+                    dbc.Button("Login", id="login-btn", color="light", outline=True, className="me-2"),
+                    dbc.Button("Sign Up", id="signup-btn", color="success"),
+                ], id="auth-logged-out", style={"display": "flex", "alignItems": "center"}),
+                html.Div([
+                    html.Span(id="auth-user-name", style={"marginRight": "14px", "fontWeight": "600"}),
+                    dbc.Button("Logout", id="logout-btn", color="light", outline=True, size="sm"),
+                ], id="auth-logged-in", style={"display": "none", "alignItems": "center"}),
+            ]),
         ], style={"display": "flex", "alignItems": "center"}),
     ], id="topbar", style={
         "display": "flex", "justifyContent": "space-between", "alignItems": "center",
         "padding": "18px 28px",
     }),
+
+    # ── Floating chatbot bubble (bottom-right) ──
+    html.Div(
+        "💬",
+        id="open-chatbot-btn",
+        n_clicks=0,
+        style={
+            "position": "fixed", "bottom": "28px", "right": "28px",
+            "width": "62px", "height": "62px", "borderRadius": "50%",
+            "background": f"linear-gradient(135deg, {EMERALD} 0%, {EMERALD_D} 100%)",
+            "display": "flex", "alignItems": "center", "justifyContent": "center",
+            "fontSize": "28px", "cursor": "pointer", "zIndex": "2000",
+            "boxShadow": "0 6px 20px rgba(5,150,105,0.45)",
+            "border": "none", "userSelect": "none",
+        },
+        title="Chat with our CSR Assistant",
+    ),
 
     # ── KPI row ──
     dbc.Row([
@@ -498,11 +553,39 @@ app.layout = html.Div([
             card_id="card-companydive"), md=6),
     ], style={"padding": "20px 28px 28px 28px"}),
 
+    # ── Login popup modal ──
+    dbc.Modal(
+        [
+            dbc.ModalHeader(dbc.ModalTitle("Login"), close_button=True),
+            dbc.ModalBody(
+                html.Div([
+                    dbc.Label("Email"),
+                    dbc.Input(id="li-email", type="email", placeholder="you@example.com", className="mb-3"),
+
+                    dbc.Label("Password"),
+                    dbc.Input(id="li-password", type="password", placeholder="Your password", className="mb-3"),
+
+                    dcc.Loading(
+                        type="circle", color=EMERALD,
+                        children=[
+                            dbc.Button("Login", id="login-submit-btn", color="success", className="mt-2 w-100", size="lg"),
+                            html.Div(id="login-submit-status", style={"marginTop": "14px"}),
+                        ],
+                    ),
+                ], style={"maxWidth": "420px", "margin": "0 auto", "padding": "10px 8px 40px 8px"}),
+            ),
+        ],
+        id="login-modal",
+        fullscreen=True,
+        is_open=False,
+    ),
+
     # ── Sign Up popup modal ──
     dbc.Modal(
         [
-            dbc.ModalHeader(dbc.ModalTitle("Sign Up"), close_button=True),
-            dbc.ModalBody([
+            dbc.ModalHeader(dbc.ModalTitle("Create your account"), close_button=True),
+            dbc.ModalBody(
+                html.Div([
                 dbc.Label("Name"),
                 dbc.Input(id="su-name", type="text", placeholder="Your full name", className="mb-1"),
                 dbc.FormFeedback("Name is required.", id="su-name-feedback", type="invalid"),
@@ -529,8 +612,7 @@ app.layout = html.Div([
 
                 # ── Startup-specific fields ──
                 html.Div([
-                    html.Hr(),
-                    html.H6("Startup Details"),
+                    html.H6("🚀 Startup Details", style={"marginBottom": "16px", "marginTop": "6px"}),
                     dbc.Label("Name of Startup"),
                     dbc.Input(id="su-startup-name", type="text", className="mb-3"),
 
@@ -562,12 +644,19 @@ app.layout = html.Div([
                     dcc.Dropdown(id="su-startup-stage",
                                  options=[{"label": s, "value": s} for s in STARTUP_STAGE_OPTIONS],
                                  style={"color": "black", "marginBottom": "18px"}),
-                ], id="startup-fields", style={"display": "none"}),
+
+                    dbc.Label("Pitch Deck / Startup Info (optional)"),
+                    dbc.Input(id="su-startup-pitch-link", type="text",
+                              placeholder="Google Drive / website link (optional)", className="mb-3"),
+                ], id="startup-fields", style={
+                    "display": "none", "backgroundColor": "rgba(5,150,105,0.06)",
+                    "border": "1px solid rgba(5,150,105,0.25)", "borderRadius": "12px",
+                    "padding": "18px", "marginTop": "8px",
+                }),
 
                 # ── Corporate-specific fields ──
                 html.Div([
-                    html.Hr(),
-                    html.H6("Corporate Details"),
+                    html.H6("🏢 Corporate Details", style={"marginBottom": "16px", "marginTop": "6px"}),
                     dbc.Label("Name of Corporate"),
                     dbc.Input(id="su-corp-name", type="text", className="mb-3"),
 
@@ -579,41 +668,195 @@ app.layout = html.Div([
                     dbc.Label("Domain"),
                     dbc.Input(id="su-corp-domain", type="text", className="mb-3"),
 
-                    dbc.Label("CSR Funding Theme Area"),
-                    dcc.Dropdown(id="su-corp-theme",
-                                 options=[{"label": t, "value": t} for t in CSR_THEME_OPTIONS],
-                                 style={"color": "black", "marginBottom": "18px"}),
+                    dbc.Label("CSR Funding Area (select all that apply)"),
+                    dbc.Checklist(
+                        id="su-corp-funding-area",
+                        options=[{"label": a, "value": a} for a in CSR_FOCUS_AREA_OPTIONS],
+                        className="mb-2",
+                    ),
+                    dbc.Input(id="su-corp-funding-area-other", type="text",
+                              placeholder="Please specify", style={"display": "none"}, className="mb-3"),
 
-                    dbc.Label("Funding To Whom"),
-                    dcc.Dropdown(id="su-corp-funding-to",
-                                 options=[{"label": f, "value": f} for f in FUNDING_TO_WHOM_OPTIONS],
-                                 style={"color": "black", "marginBottom": "18px"}),
+                    dbc.Label("CSR Donation Priority"),
+                    dcc.Dropdown(id="su-corp-donation-priority",
+                                 options=[{"label": d, "value": d} for d in CSR_DONATION_PRIORITY_OPTIONS],
+                                 style={"color": "black", "marginBottom": "10px"}),
+                    dbc.Input(id="su-corp-donation-priority-other", type="text",
+                              placeholder="Please specify", style={"display": "none"}, className="mb-3"),
 
                     dbc.Label("CSR Funding Sector"),
                     dcc.Dropdown(id="su-corp-sector",
                                  options=[{"label": s, "value": s} for s in CSR_FUNDING_SECTOR_OPTIONS],
+                                 style={"color": "black", "marginBottom": "22px"}),
+
+                    dbc.Label("CSR Funding Range"),
+                    dcc.RangeSlider(
+                        id="su-corp-range",
+                        min=5, max=500, step=5, value=[5, 100],
+                        marks={5: "₹5L", 50: "₹50L", 100: "₹1Cr", 250: "₹2.5Cr", 500: "₹5Cr+"},
+                        tooltip={"placement": "bottom", "always_visible": True},
+                    ),
+                    html.Div(style={"marginBottom": "16px"}),
+                ], id="corporate-fields", style={
+                    "display": "none", "backgroundColor": "rgba(37,99,235,0.06)",
+                    "border": "1px solid rgba(37,99,235,0.25)", "borderRadius": "12px",
+                    "padding": "18px", "marginTop": "8px",
+                }),
+
+                # ── Incubator-specific fields ──
+                html.Div([
+                    html.H6("🧪 Incubator Details", style={"marginBottom": "16px", "marginTop": "6px"}),
+                    dbc.Label("Name of Incubator"),
+                    dbc.Input(id="su-incub-name", type="text", className="mb-3"),
+
+                    dbc.Label("Type of Incubator"),
+                    dcc.Dropdown(id="su-incub-type",
+                                 options=[{"label": t, "value": t} for t in INCUBATOR_TYPE_OPTIONS],
                                  style={"color": "black", "marginBottom": "18px"}),
 
-                    dbc.Label("CSR Funding Range (₹)"),
-                    dbc.Row([
-                        dbc.Col(dbc.Input(id="su-corp-range-min", type="number", placeholder="Min (Lakh)")),
-                        dbc.Col(dbc.Input(id="su-corp-range-max", type="number", placeholder="Max (Crore)")),
-                    ], className="mb-1"),
-                    dbc.FormFeedback("Min should not be greater than Max.", id="su-corp-range-feedback", type="invalid"),
-                    html.Div(style={"marginBottom": "12px"}),
-                ], id="corporate-fields", style={"display": "none"}),
+                    dbc.Label("Year of Establishment"),
+                    dbc.Input(id="su-incub-year", type="text", placeholder="e.g. 2015", className="mb-3"),
+
+                    dbc.Label("Location of Incubation"),
+                    dbc.Input(id="su-incub-location", type="text", className="mb-3"),
+
+                    dbc.Label("CSR Focus Area (select all that apply)"),
+                    dbc.Checklist(
+                        id="su-incub-focus",
+                        options=[{"label": a, "value": a} for a in CSR_FOCUS_AREA_OPTIONS],
+                        className="mb-2",
+                    ),
+                    dbc.Input(id="su-incub-focus-other", type="text",
+                              placeholder="Please specify", style={"display": "none"}, className="mb-3"),
+
+                    dbc.Label("Associate Corporate Partner / Funder"),
+                    dbc.Input(id="su-incub-partner", type="text", className="mb-3"),
+
+                    dbc.Label("Annual Revenue"),
+                    dcc.RangeSlider(
+                        id="su-incub-revenue", min=100, max=500, step=25, value=[100, 300],
+                        marks={100: "₹1Cr", 200: "₹2Cr", 300: "₹3Cr", 400: "₹4Cr", 500: "₹5Cr+"},
+                        tooltip={"placement": "bottom", "always_visible": True},
+                    ),
+                    html.Div(style={"marginBottom": "16px"}),
+
+                    dbc.Label("Do you have the following documents?"),
+                    dbc.Checklist(
+                        id="su-incub-docs",
+                        options=[{"label": d, "value": d} for d in REQUIRED_DOCS_OPTIONS],
+                        className="mb-2",
+                    ),
+                    html.Div(id="su-incub-doc-warning"),
+                ], id="incubator-fields", style={
+                    "display": "none", "backgroundColor": "rgba(147,51,234,0.06)",
+                    "border": "1px solid rgba(147,51,234,0.25)", "borderRadius": "12px",
+                    "padding": "18px", "marginTop": "8px",
+                }),
+
+                # ── NGO-specific fields ──
+                html.Div([
+                    html.H6("🤝 NGO Details", style={"marginBottom": "16px", "marginTop": "6px"}),
+                    dbc.Label("Name of NGO"),
+                    dbc.Input(id="su-ngo-name", type="text", className="mb-3"),
+
+                    dbc.Label("Type of NGO"),
+                    dcc.Dropdown(id="su-ngo-type",
+                                 options=[{"label": t, "value": t} for t in NGO_TYPE_OPTIONS],
+                                 style={"color": "black", "marginBottom": "18px"}),
+
+                    dbc.Label("Year of Establishment"),
+                    dbc.Input(id="su-ngo-year", type="text", placeholder="e.g. 2010", className="mb-3"),
+
+                    dbc.Label("Location of NGO"),
+                    dbc.Input(id="su-ngo-location", type="text", className="mb-3"),
+
+                    dbc.Label("CSR Focus Area (select all that apply)"),
+                    dbc.Checklist(
+                        id="su-ngo-focus",
+                        options=[{"label": a, "value": a} for a in CSR_FOCUS_AREA_OPTIONS],
+                        className="mb-2",
+                    ),
+                    dbc.Input(id="su-ngo-focus-other", type="text",
+                              placeholder="Please specify", style={"display": "none"}, className="mb-3"),
+
+                    dbc.Label("Associate Corporate Partner / Funder"),
+                    dbc.Input(id="su-ngo-partner", type="text", className="mb-3"),
+
+                    dbc.Label("Annual Revenue"),
+                    dcc.RangeSlider(
+                        id="su-ngo-revenue", min=100, max=500, step=25, value=[100, 300],
+                        marks={100: "₹1Cr", 200: "₹2Cr", 300: "₹3Cr", 400: "₹4Cr", 500: "₹5Cr+"},
+                        tooltip={"placement": "bottom", "always_visible": True},
+                    ),
+                    html.Div(style={"marginBottom": "16px"}),
+
+                    dbc.Label("Geographical Reach"),
+                    dcc.Dropdown(id="su-ngo-reach",
+                                 options=[{"label": g, "value": g} for g in GEOGRAPHIC_REACH_OPTIONS],
+                                 style={"color": "black", "marginBottom": "18px"}),
+
+                    dbc.Label("Do you have the following documents?"),
+                    dbc.Checklist(
+                        id="su-ngo-docs",
+                        options=[{"label": d, "value": d} for d in REQUIRED_DOCS_OPTIONS],
+                        className="mb-2",
+                    ),
+                    html.Div(id="su-ngo-doc-warning"),
+                ], id="ngo-fields", style={
+                    "display": "none", "backgroundColor": "rgba(217,119,6,0.06)",
+                    "border": "1px solid rgba(217,119,6,0.25)", "borderRadius": "12px",
+                    "padding": "18px", "marginTop": "8px",
+                }),
+
+                # ── Innovation Cell / Innovator-specific fields ──
+                html.Div([
+                    html.H6("💡 Innovator Details", style={"marginBottom": "16px", "marginTop": "6px"}),
+                    dbc.Label("Name of Innovator"),
+                    dbc.Input(id="su-innov-name", type="text", className="mb-3"),
+
+                    dbc.Label("Explain your research work"),
+                    dbc.Textarea(id="su-innov-research", style={"height": "160px"}, className="mb-3"),
+                ], id="innovation-fields", style={
+                    "display": "none", "backgroundColor": "rgba(8,145,178,0.06)",
+                    "border": "1px solid rgba(8,145,178,0.25)", "borderRadius": "12px",
+                    "padding": "18px", "marginTop": "8px",
+                }),
+
+                # ── Others-specific fields ──
+                html.Div([
+                    html.H6("📋 Organization Details", style={"marginBottom": "16px", "marginTop": "6px"}),
+                    dbc.Label("Organization Name"),
+                    dbc.Input(id="su-other-org-name", type="text", className="mb-3"),
+
+                    dbc.Label("Organization Type"),
+                    dbc.Input(id="su-other-org-type", type="text",
+                              placeholder="e.g. Government Body, Academic Institution, Media", className="mb-3"),
+
+                    dbc.Label("Brief Description"),
+                    dbc.Textarea(id="su-other-description", style={"height": "100px"}, className="mb-3"),
+
+                    dbc.Label("Area of Interest / Focus"),
+                    dbc.Input(id="su-other-focus", type="text", className="mb-3"),
+                ], id="others-fields", style={
+                    "display": "none", "backgroundColor": "rgba(100,116,139,0.08)",
+                    "border": "1px solid rgba(100,116,139,0.3)", "borderRadius": "12px",
+                    "padding": "18px", "marginTop": "8px",
+                }),
 
                 dcc.Loading(
                     type="circle", color=EMERALD,
                     children=[
-                        dbc.Button("Submit", id="signup-submit-btn", color="success", className="mt-2 w-100"),
-                        html.Div(id="signup-submit-status"),
+                        dbc.Button("Submit", id="signup-submit-btn", color="success", className="mt-2 w-100", size="lg"),
+                        html.Div(id="signup-submit-status", style={"marginTop": "14px"}),
+                        dbc.Button("Go to Login", id="signup-go-login-btn", color="primary", size="sm",
+                                   style={"display": "none"}),
                     ],
                 ),
-            ]),
+                ], style={"maxWidth": "560px", "margin": "0 auto", "padding": "10px 8px 40px 8px"}),
+            ),
         ],
         id="signup-modal",
-        size="lg",
+        fullscreen=True,
         is_open=False,
     ),
 
@@ -650,18 +893,185 @@ def toggle_signup_modal(n_clicks, is_open):
 
 
 @app.callback(
+    Output("su-name", "value"),
+    Output("su-email", "value"),
+    Output("su-contact", "value"),
+    Output("su-password", "value"),
+    Output("su-user-type", "value"),
+    Output("su-startup-name", "value"),
+    Output("su-startup-industry", "value"),
+    Output("su-startup-domain", "value"),
+    Output("su-startup-desc", "value"),
+    Output("su-startup-dpiit", "value"),
+    Output("su-startup-year", "value"),
+    Output("su-startup-stage", "value"),
+    Output("su-startup-pitch-link", "value"),
+    Output("su-corp-name", "value"),
+    Output("su-corp-industry", "value"),
+    Output("su-corp-domain", "value"),
+    Output("su-corp-funding-area", "value"),
+    Output("su-corp-funding-area-other", "value"),
+    Output("su-corp-donation-priority", "value"),
+    Output("su-corp-donation-priority-other", "value"),
+    Output("su-corp-sector", "value"),
+    Output("su-corp-range", "value"),
+    Output("su-incub-name", "value"),
+    Output("su-incub-type", "value"),
+    Output("su-incub-year", "value"),
+    Output("su-incub-location", "value"),
+    Output("su-incub-focus", "value"),
+    Output("su-incub-focus-other", "value"),
+    Output("su-incub-partner", "value"),
+    Output("su-incub-revenue", "value"),
+    Output("su-incub-docs", "value"),
+    Output("su-ngo-name", "value"),
+    Output("su-ngo-type", "value"),
+    Output("su-ngo-year", "value"),
+    Output("su-ngo-location", "value"),
+    Output("su-ngo-focus", "value"),
+    Output("su-ngo-focus-other", "value"),
+    Output("su-ngo-partner", "value"),
+    Output("su-ngo-revenue", "value"),
+    Output("su-ngo-reach", "value"),
+    Output("su-ngo-docs", "value"),
+    Output("su-innov-name", "value"),
+    Output("su-innov-research", "value"),
+    Output("su-other-org-name", "value"),
+    Output("su-other-org-type", "value"),
+    Output("su-other-description", "value"),
+    Output("su-other-focus", "value"),
+    Output("signup-submit-status", "children", allow_duplicate=True),
+    Output("signup-go-login-btn", "style", allow_duplicate=True),
+    Input("signup-modal", "is_open"),
+    prevent_initial_call=True,
+)
+def reset_signup_form(is_open):
+    if not is_open:
+        raise dash.exceptions.PreventUpdate
+    # Every field reset to blank; checklists to [], the two range sliders to their defaults
+    return (
+        None, None, None, None, None,                     # common
+        None, None, None, None, None, None, None, None,   # startup
+        None, None, None, [], None, None, None, None, [5, 100],  # corporate
+        None, None, None, None, [], None, None, [100, 300], [],  # incubator
+        None, None, None, None, [], None, None, [100, 300], None, [],  # ngo
+        None, None,                                        # innovation
+        None, None, None, None,                            # others
+        "", {"display": "none"},                           # clear leftover status/button
+    )
+
+
+@app.callback(
+    Output("login-modal", "is_open"),
+    Output("signup-modal", "is_open", allow_duplicate=True),
+    Input("login-btn", "n_clicks"),
+    Input("signup-go-login-btn", "n_clicks"),
+    State("login-modal", "is_open"),
+    prevent_initial_call=True,
+)
+def toggle_login_modal(login_btn_clicks, go_login_clicks, is_open):
+    triggered = dash.callback_context.triggered[0]["prop_id"].split(".")[0]
+    if triggered == "signup-go-login-btn":
+        return True, False  # open login, close signup
+    return not is_open, dash.no_update
+
+
+@app.callback(
+    Output("auth-logged-out", "style"),
+    Output("auth-logged-in", "style"),
+    Output("auth-user-name", "children"),
+    Input("logged-in-user", "data"),
+)
+def render_auth_area(user):
+    if user:
+        display_name = user.get("name", "User")
+        return {"display": "none"}, {"display": "flex", "alignItems": "center"}, f"Hi, {display_name}"
+    return {"display": "flex", "alignItems": "center"}, {"display": "none"}, ""
+
+
+@app.callback(
+    Output("logged-in-user", "data"),
+    Output("login-submit-status", "children"),
+    Output("login-modal", "is_open", allow_duplicate=True),
+    Output("li-email", "value"),
+    Output("li-password", "value"),
+    Input("login-submit-btn", "n_clicks"),
+    State("li-email", "value"),
+    State("li-password", "value"),
+    prevent_initial_call=True,
+)
+def submit_login(n_clicks, email, password):
+    import re
+
+    no_op = (dash.no_update, dash.no_update, dash.no_update)
+
+    if not email or not password:
+        return (dash.no_update, dbc.Alert("Please enter both email and password.", color="danger")) + no_op
+
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        return (dash.no_update, dbc.Alert("Please enter a valid email address.", color="danger")) + no_op
+
+    try:
+        resp = requests.post(f"{API_URL}/login", json={"email": email, "password": password}, timeout=8)
+        if resp.status_code == 200:
+            user = resp.json().get("user")
+            return user, "", False, "", ""  # clear form + close modal on success
+        else:
+            err = resp.json().get("error", "Login failed. Please try again.")
+            return (dash.no_update, dbc.Alert(err, color="danger")) + no_op
+    except requests.exceptions.RequestException:
+        return (dash.no_update, dbc.Alert("Could not reach the server. Make sure server.js is running.", color="danger")) + no_op
+
+
+@app.callback(
+    Output("logged-in-user", "data", allow_duplicate=True),
+    Input("logout-btn", "n_clicks"),
+    prevent_initial_call=True,
+)
+def logout(n_clicks):
+    return None
+
+
+@app.callback(
+    Output("li-email", "value", allow_duplicate=True),
+    Output("li-password", "value", allow_duplicate=True),
+    Output("login-submit-status", "children", allow_duplicate=True),
+    Input("login-modal", "is_open"),
+    prevent_initial_call=True,
+)
+def reset_login_form(is_open):
+    if not is_open:
+        raise dash.exceptions.PreventUpdate
+    return None, None, ""
+
+
+SECTION_BASE_STYLE = {
+    "startup": {"backgroundColor": "rgba(5,150,105,0.06)", "border": "1px solid rgba(5,150,105,0.25)"},
+    "corporate": {"backgroundColor": "rgba(37,99,235,0.06)", "border": "1px solid rgba(37,99,235,0.25)"},
+    "incubator": {"backgroundColor": "rgba(147,51,234,0.06)", "border": "1px solid rgba(147,51,234,0.25)"},
+    "ngo": {"backgroundColor": "rgba(217,119,6,0.06)", "border": "1px solid rgba(217,119,6,0.25)"},
+    "innovation": {"backgroundColor": "rgba(8,145,178,0.06)", "border": "1px solid rgba(8,145,178,0.25)"},
+    "others": {"backgroundColor": "rgba(100,116,139,0.08)", "border": "1px solid rgba(100,116,139,0.3)"},
+}
+
+
+@app.callback(
     Output("startup-fields", "style"),
     Output("corporate-fields", "style"),
+    Output("incubator-fields", "style"),
+    Output("ngo-fields", "style"),
+    Output("innovation-fields", "style"),
+    Output("others-fields", "style"),
     Input("su-user-type", "value"),
 )
 def show_relevant_fields(user_type):
-    hidden = {"display": "none"}
-    shown = {"display": "block"}
-    if user_type == "startup":
-        return shown, hidden
-    if user_type == "corporate":
-        return hidden, shown
-    return hidden, hidden
+    order = ["startup", "corporate", "incubator", "ngo", "innovation", "others"]
+    styles = []
+    for t in order:
+        base = {**SECTION_BASE_STYLE[t], "borderRadius": "12px", "padding": "18px", "marginTop": "8px"}
+        base["display"] = "block" if user_type == t else "none"
+        styles.append(base)
+    return tuple(styles)
 
 
 @app.callback(
@@ -684,6 +1094,14 @@ def validate_common_fields(name, email, contact, password):
 
 
 @app.callback(
+    Output("su-startup-year", "disabled"),
+    Input("su-startup-dpiit", "value"),
+)
+def toggle_startup_year_field(dpiit_value):
+    return dpiit_value == "no"
+
+
+@app.callback(
     Output("su-startup-year", "invalid"),
     Input("su-startup-year", "value"),
 )
@@ -693,24 +1111,84 @@ def validate_startup_year(year):
 
 
 @app.callback(
-    Output("su-corp-range-min", "invalid"),
-    Output("su-corp-range-max", "invalid"),
-    Input("su-corp-range-min", "value"),
-    Input("su-corp-range-max", "value"),
+    Output("su-corp-funding-area-other", "style"),
+    Input("su-corp-funding-area", "value"),
 )
-def validate_corp_range(c_min, c_max):
-    invalid = c_min is not None and c_max is not None and c_min > c_max
-    return invalid, invalid
+def toggle_corp_funding_other(selected):
+    if selected and "Other" in selected:
+        return {"display": "block"}
+    return {"display": "none"}
+
+
+@app.callback(
+    Output("su-corp-donation-priority-other", "style"),
+    Input("su-corp-donation-priority", "value"),
+)
+def toggle_corp_donation_other(value):
+    if value == "Others":
+        return {"display": "block"}
+    return {"display": "none"}
+
+
+@app.callback(
+    Output("su-incub-focus-other", "style"),
+    Input("su-incub-focus", "value"),
+)
+def toggle_incub_focus_other(selected):
+    if selected and "Other" in selected:
+        return {"display": "block"}
+    return {"display": "none"}
+
+
+@app.callback(
+    Output("su-ngo-focus-other", "style"),
+    Input("su-ngo-focus", "value"),
+)
+def toggle_ngo_focus_other(selected):
+    if selected and "Other" in selected:
+        return {"display": "block"}
+    return {"display": "none"}
+
+
+DOC_WARNING_TEXT = (
+    "⚠️ You are missing one or more required documents, so you are currently "
+    "not eligible to apply for CSR grants. You can still sign up and log in — "
+    "you can complete your documentation later."
+)
+
+
+@app.callback(
+    Output("su-incub-doc-warning", "children"),
+    Input("su-incub-docs", "value"),
+)
+def check_incub_docs(selected):
+    selected = selected or []
+    if len(selected) < len(REQUIRED_DOCS_OPTIONS):
+        return dbc.Alert(DOC_WARNING_TEXT, color="warning", className="mt-2", style={"fontSize": "13px"})
+    return ""
+
+
+@app.callback(
+    Output("su-ngo-doc-warning", "children"),
+    Input("su-ngo-docs", "value"),
+)
+def check_ngo_docs(selected):
+    selected = selected or []
+    if len(selected) < len(REQUIRED_DOCS_OPTIONS):
+        return dbc.Alert(DOC_WARNING_TEXT, color="warning", className="mt-2", style={"fontSize": "13px"})
+    return ""
 
 
 @app.callback(
     Output("signup-submit-status", "children"),
+    Output("signup-go-login-btn", "style"),
     Input("signup-submit-btn", "n_clicks"),
     State("su-name", "value"),
     State("su-email", "value"),
     State("su-contact", "value"),
     State("su-password", "value"),
     State("su-user-type", "value"),
+    # startup
     State("su-startup-name", "value"),
     State("su-startup-industry", "value"),
     State("su-startup-domain", "value"),
@@ -718,54 +1196,137 @@ def validate_corp_range(c_min, c_max):
     State("su-startup-dpiit", "value"),
     State("su-startup-year", "value"),
     State("su-startup-stage", "value"),
+    State("su-startup-pitch-link", "value"),
+    # corporate
     State("su-corp-name", "value"),
     State("su-corp-industry", "value"),
     State("su-corp-domain", "value"),
-    State("su-corp-theme", "value"),
-    State("su-corp-funding-to", "value"),
+    State("su-corp-funding-area", "value"),
+    State("su-corp-funding-area-other", "value"),
+    State("su-corp-donation-priority", "value"),
+    State("su-corp-donation-priority-other", "value"),
     State("su-corp-sector", "value"),
-    State("su-corp-range-min", "value"),
-    State("su-corp-range-max", "value"),
+    State("su-corp-range", "value"),
+    # incubator
+    State("su-incub-name", "value"),
+    State("su-incub-type", "value"),
+    State("su-incub-year", "value"),
+    State("su-incub-location", "value"),
+    State("su-incub-focus", "value"),
+    State("su-incub-focus-other", "value"),
+    State("su-incub-partner", "value"),
+    State("su-incub-revenue", "value"),
+    State("su-incub-docs", "value"),
+    # ngo
+    State("su-ngo-name", "value"),
+    State("su-ngo-type", "value"),
+    State("su-ngo-year", "value"),
+    State("su-ngo-location", "value"),
+    State("su-ngo-focus", "value"),
+    State("su-ngo-focus-other", "value"),
+    State("su-ngo-partner", "value"),
+    State("su-ngo-revenue", "value"),
+    State("su-ngo-reach", "value"),
+    State("su-ngo-docs", "value"),
+    # innovation
+    State("su-innov-name", "value"),
+    State("su-innov-research", "value"),
+    # others
+    State("su-other-org-name", "value"),
+    State("su-other-org-type", "value"),
+    State("su-other-description", "value"),
+    State("su-other-focus", "value"),
     prevent_initial_call=True,
 )
 def submit_signup(n_clicks, name, email, contact, password, user_type,
-                   s_name, s_industry, s_domain, s_desc, s_dpiit, s_year, s_stage,
-                   c_name, c_industry, c_domain, c_theme, c_funding_to, c_sector, c_min, c_max):
+                   s_name, s_industry, s_domain, s_desc, s_dpiit, s_year, s_stage, s_pitch,
+                   c_name, c_industry, c_domain, c_area, c_area_other, c_priority, c_priority_other, c_sector, c_range,
+                   i_name, i_type, i_year, i_location, i_focus, i_focus_other, i_partner, i_revenue, i_docs,
+                   n_name, n_type, n_year, n_location, n_focus, n_focus_other, n_partner, n_revenue, n_reach, n_docs,
+                   innov_name, innov_research,
+                   o_name, o_type, o_desc, o_focus):
 
     import re
 
+    hidden_btn = {"display": "none"}
+
     if not name or not email or not contact or not password or not user_type:
-        return dbc.Alert("Please fill in Name, Email, Contact, Password, and select who you are.", color="danger")
+        return dbc.Alert("Please fill in Name, Email, Contact, Password, and select who you are.", color="danger"), hidden_btn
 
     if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
-        return dbc.Alert("Please enter a valid email address.", color="danger")
+        return dbc.Alert("Please enter a valid email address.", color="danger"), hidden_btn
 
     if not re.match(r"^\d{10}$", contact):
-        return dbc.Alert("Please enter a valid 10-digit contact number.", color="danger")
+        return dbc.Alert("Please enter a valid 10-digit contact number.", color="danger"), hidden_btn
 
     if len(password) < 6:
-        return dbc.Alert("Password should be at least 6 characters.", color="danger")
-
-    if user_type not in ("startup", "corporate"):
-        return dbc.Alert("Sign up for this category is coming soon.", color="warning")
+        return dbc.Alert("Password should be at least 6 characters.", color="danger"), hidden_btn
 
     if user_type == "startup":
         if s_year and not re.match(r"^(19[9]\d|20[0-2]\d)$", s_year):
-            return dbc.Alert("Please enter a valid year of incorporation (1990–2026).", color="danger")
+            return dbc.Alert("Please enter a valid year of incorporation (1990–2026).", color="danger"), hidden_btn
         profile_details = {
             "startup_name": s_name, "industry": s_industry, "domain": s_domain,
             "description": s_desc, "dpiit_registered": s_dpiit,
-            "year_of_incorporation": s_year, "stage": s_stage,
+            "year_of_incorporation": s_year if s_dpiit == "yes" else None,
+            "stage": s_stage, "pitch_deck_link": s_pitch,
         }
-    else:
-        if c_min is not None and c_max is not None and c_min > c_max:
-            return dbc.Alert("Minimum funding range cannot be greater than maximum.", color="danger")
+
+    elif user_type == "corporate":
+        c_area_final = list(c_area) if c_area else []
+        if "Other" in c_area_final and c_area_other:
+            c_area_final = [a for a in c_area_final if a != "Other"] + [c_area_other]
+        c_priority_final = c_priority_other if c_priority == "Others" and c_priority_other else c_priority
         profile_details = {
             "corporate_name": c_name, "industry": c_industry, "domain": c_domain,
-            "csr_funding_theme": c_theme, "funding_to_whom": c_funding_to,
+            "csr_funding_area": c_area_final, "csr_donation_priority": c_priority_final,
             "csr_funding_sector": c_sector,
-            "csr_funding_range_min_lakh": c_min, "csr_funding_range_max_crore": c_max,
+            "csr_funding_range_min_lakh": c_range[0] if c_range else None,
+            "csr_funding_range_max_lakh": c_range[1] if c_range else None,
         }
+
+    elif user_type == "incubator":
+        i_focus_final = list(i_focus) if i_focus else []
+        if "Other" in i_focus_final and i_focus_other:
+            i_focus_final = [a for a in i_focus_final if a != "Other"] + [i_focus_other]
+        profile_details = {
+            "incubator_name": i_name, "type": i_type, "year_of_establishment": i_year,
+            "location": i_location, "csr_focus_area": i_focus_final,
+            "associate_corporate_partner": i_partner,
+            "annual_revenue_min_lakh": i_revenue[0] if i_revenue else None,
+            "annual_revenue_max_lakh": i_revenue[1] if i_revenue else None,
+            "documents_available": i_docs or [],
+            "grant_eligible": len(i_docs or []) == len(REQUIRED_DOCS_OPTIONS),
+        }
+
+    elif user_type == "ngo":
+        n_focus_final = list(n_focus) if n_focus else []
+        if "Other" in n_focus_final and n_focus_other:
+            n_focus_final = [a for a in n_focus_final if a != "Other"] + [n_focus_other]
+        profile_details = {
+            "ngo_name": n_name, "type": n_type, "year_of_establishment": n_year,
+            "location": n_location, "csr_focus_area": n_focus_final,
+            "associate_corporate_partner": n_partner,
+            "annual_revenue_min_lakh": n_revenue[0] if n_revenue else None,
+            "annual_revenue_max_lakh": n_revenue[1] if n_revenue else None,
+            "geographical_reach": n_reach,
+            "documents_available": n_docs or [],
+            "grant_eligible": len(n_docs or []) == len(REQUIRED_DOCS_OPTIONS),
+        }
+
+    elif user_type == "innovation":
+        if not innov_name or not innov_research:
+            return dbc.Alert("Please fill in your name and research work.", color="danger"), hidden_btn
+        profile_details = {"innovator_name": innov_name, "research_work": innov_research}
+
+    elif user_type == "others":
+        profile_details = {
+            "organization_name": o_name, "organization_type": o_type,
+            "description": o_desc, "area_of_focus": o_focus,
+        }
+
+    else:
+        return dbc.Alert("Please select who you are.", color="danger"), hidden_btn
 
     try:
         resp = requests.post(f"{API_URL}/signup", json={
@@ -774,12 +1335,12 @@ def submit_signup(n_clicks, name, email, contact, password, user_type,
         }, timeout=8)
 
         if resp.status_code == 200:
-            return dbc.Alert("Signed up successfully! You can close this window.", color="success")
+            return dbc.Alert("🎉 Signed up successfully!", color="success"), {"display": "block", "marginTop": "4px"}
         else:
             err = resp.json().get("error", "Signup failed. Please try again.")
-            return dbc.Alert(err, color="danger")
+            return dbc.Alert(err, color="danger"), hidden_btn
     except requests.exceptions.RequestException:
-        return dbc.Alert("Could not reach the server. Make sure server.js is running.", color="danger")
+        return dbc.Alert("Could not reach the server. Make sure server.js is running.", color="danger"), hidden_btn
 
 
 @app.callback(
@@ -819,6 +1380,8 @@ def update_company_chart(company, theme):
     Output("topbar", "style"),
     Output("page-title", "style"),
     Output("page-subtitle", "style"),
+    Output("auth-user-name", "style"),
+    Output("theme-toggle-btn", "children"),
     Output("kpi-total", "style"),
     Output("kpi-psu", "style"),
     Output("kpi-priv", "style"),
@@ -847,10 +1410,12 @@ def apply_theme(theme):
     }
     title_style = {"margin": "0", "color": p["text"]}
     subtitle_style = {"margin": "0", "color": p["subtext"]}
+    auth_name_style = {"marginRight": "14px", "fontWeight": "600", "color": p["text"]}
     card_style = {"backgroundColor": p["card_bg"], "border": "none", "borderRadius": "12px"}
+    toggle_label = "☀️  Light Mode" if theme == "dark" else "🌙  Dark Mode"
 
     return (
-        page_style, topbar_style, title_style, subtitle_style,
+        page_style, topbar_style, title_style, subtitle_style, auth_name_style, toggle_label,
         card_style, card_style, card_style, card_style,
         card_style, card_style, card_style, card_style, card_style, card_style, card_style,
         make_heatmap(theme), make_trend(theme), make_sector_bars(theme),
