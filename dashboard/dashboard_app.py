@@ -1380,6 +1380,7 @@ def update_company_chart(company, theme):
     Output("topbar", "style"),
     Output("page-title", "style"),
     Output("page-subtitle", "style"),
+    Output("auth-user-name", "style"),
     Output("theme-toggle-btn", "children"),
     Output("kpi-total", "style"),
     Output("kpi-psu", "style"),
@@ -1409,11 +1410,12 @@ def apply_theme(theme):
     }
     title_style = {"margin": "0", "color": p["text"]}
     subtitle_style = {"margin": "0", "color": p["subtext"]}
+    auth_name_style = {"marginRight": "14px", "fontWeight": "600", "color": p["text"]}
     card_style = {"backgroundColor": p["card_bg"], "border": "none", "borderRadius": "12px"}
     toggle_label = "☀️  Light Mode" if theme == "dark" else "🌙  Dark Mode"
 
     return (
-        page_style, topbar_style, title_style, subtitle_style, toggle_label,
+        page_style, topbar_style, title_style, subtitle_style, auth_name_style, toggle_label,
         card_style, card_style, card_style, card_style,
         card_style, card_style, card_style, card_style, card_style, card_style, card_style,
         make_heatmap(theme), make_trend(theme), make_sector_bars(theme),
@@ -1424,3 +1426,4 @@ def apply_theme(theme):
 # ── RUN ──────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     app.run(debug=True, port=8050)
+    
