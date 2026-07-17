@@ -1427,3 +1427,4 @@ def apply_theme(theme):
 if __name__ == "__main__":
     app.run(debug=True, port=8050)
     
+    
